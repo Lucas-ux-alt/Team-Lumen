@@ -1,0 +1,8 @@
+.vs/
+*.suo
+*,user
+venv/
+__pvcache__/
+*.pyc
+*.db
+instance/

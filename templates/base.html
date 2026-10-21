@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>Meiti Shangcheng System</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <!-- 把原来的国内源删掉，换回下面这两行 -->
+    <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js"></script>
+</head>
+<body>
+    {% if request.path == '/login' %}
+    <div style="position: absolute; top: 20px; right: 20px; z-index: 100;">
+        <button onclick="toggleLanguage()" class="icon-btn" style="background: white; border: 1px solid #ccc; padding: 5px 10px; border-radius: 4px; cursor: pointer;">EN / 中</button>
+    </div>
+    <div style="display: flex; justify-content: center; align-items: center; min-height: 100vh; background-color: var(--bg-color);">
+        {% block login_content %}{% endblock %}
+    </div>
+    {% else %}
+    <div class="app-container">
+        <aside class="sidebar">
+            <div class="logo-area"><div class="logo-icon">M</div><span class="logo-text">Meiti System</span></div>
+            <nav class="side-nav"><span data-zh="工作台" data-en="Dashboard">工作台</span></nav>
+            <div class="sidebar-bottom">
+                {% if current_user.is_authenticated %}
+                <div class="user-info" onclick="openProfileModal()" style="cursor: pointer;" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='transparent'">
+                    <div class="avatar">{{ current_user.name[0] }}</div>
+                    <div class="user-details">
+                        <div class="user-name">{{ current_user.name }}</div>
+                        <div class="user-role">{{ current_user.role }}</div>
+                    </div>
+                </div>
+                <button onclick="window.location.href='{{ url_for('logout') }}'" class="logout-btn" style="width: 100%; border: none; cursor: pointer; display: block;" data-zh="退出登录" data-en="Logout">退出登录</button>
+                {% endif %}
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <header class="topbar">
+                {% if current_user.role == 'HR' %}
+                <div class="search-bar"><input type="text" id="globalSearch" placeholder="搜索员工姓名..." oninput="handleGlobalSearch()"></div>
+                {% else %}
+                <div></div>
+                {% endif %}
+                <button onclick="toggleLanguage()" class="icon-btn">EN / 中</button>
+            </header>
+            <div class="content-wrapper">
+                {% block app_content %}{% endblock %}
+            </div>
+        </main>
+    </div>
+
+    <!-- 个人中心弹窗 -->
+    <div id="globalProfileModal" class="modal" style="display:none;">
+        <div class="modal-content">
+            <h3 data-zh="👤 个人中心" data-en="👤 Personal Center">👤 个人中心</h3>
+            <div style="display: flex; gap: 15px; margin-top: 15px;">
+                <div style="flex: 1;">
+                    <label style="font-size: 13px;">姓名</label>
+                    <input type="text" id="g_profile_name" value="{{ current_user.name }}" style="width: 100%; padding: 8px;">
+                </div>
+                <div style="flex: 1;">
+                    <label style="font-size: 13px;">工号</label>
+                    <input type="text" id="g_profile_emp_id" value="{{ current_user.employee_id_number or '' }}" style="width: 100%; padding: 8px;">
+                </div>
+            </div>
+            <div style="margin-top: 10px;"><label style="font-size: 13px;">邮箱</label><input type="email" id="g_profile_email" value="{{ current_user.email or '' }}" style="width: 100%; padding: 8px;"></div>
+            <div style="margin-top: 10px;"><label style="font-size: 13px;">电话</label><input type="text" id="g_profile_phone" value="{{ current_user.phone or '' }}" style="width: 100%; padding: 8px;"></div>
+            <div style="margin-top: 10px;"><label style="font-size: 13px;">地址</label><input type="text" id="g_profile_address" value="{{ current_user.address or '' }}" style="width: 100%; padding: 8px;"></div>
+            <div class="modal-buttons">
+                <button class="btn btn-primary" onclick="submitGlobalProfile()">保存修改</button>
+                <button class="btn" onclick="document.getElementById('globalProfileModal').style.display='none'">关闭</button>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <script>
+                window.currentLang = localStorage.getItem('siteLang') || 'zh';
+                window.toggleLanguage = function() { window.currentLang = (window.currentLang === 'zh') ? 'en' : 'zh'; localStorage.setItem('siteLang', window.currentLang); location.reload(); };
+                window.applyLanguage = function() {
+                    document.querySelectorAll('[data-zh]').forEach(el => { el.innerText = window.currentLang === 'zh' ? el.getAttribute('data-zh') : el.getAttribute('data-en'); });
+                };
+                let searchTimeout = null;
+                function handleGlobalSearch() {
+                    clearTimeout(searchTimeout);
+                    searchTimeout = setTimeout(() => {
+                        const keyword = document.getElementById('globalSearch').value.trim();
+                        if (typeof window.filterDashboard === 'function') window.filterDashboard(keyword);
+                    }, 500);
+                }
+                function openProfileModal() { document.getElementById('globalProfileModal').style.display = 'flex'; }
+                async function submitGlobalProfile() {
+                    const data = {
+                        name: document.getElementById('g_profile_name').value, employee_id_number: document.getElementById('g_profile_emp_id').value,
+                        email: document.getElementById('g_profile_email').value, phone: document.getElementById('g_profile_phone').value,
+                        address: document.getElementById('g_profile_address').value
+                    };
+                    const res = await fetch('/api/employee/profile', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+                    if(res.ok) { alert('信息已更新'); location.reload(); } else { alert('更新失败'); }
+                }
+                window.addEventListener('DOMContentLoaded', window.applyLanguage);
+    </script>
+</body>
+</html>

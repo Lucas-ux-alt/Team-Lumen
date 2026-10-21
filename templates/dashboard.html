@@ -1,0 +1,482 @@
+{% extends "base.html" %}
+
+{% block app_content %}
+
+{% if current_user.role == 'Admin' %}
+<!-- ================= 管理员视图 ================= -->
+<div class="card" style="width: 100%;">
+    <h2 data-zh="📅 全员考勤与排班日历" data-en="📅 Global Attendance & Shift Calendar">📅 全员考勤与排班日历</h2>
+    <p style="color: #64748b; font-size: 14px; margin-bottom: 15px;" data-zh="点击空白日期可进行排班，点击已有排班条可修改。" data-en="Click empty date to assign shift, click existing block to edit.">点击空白日期可进行排班，点击已有排班条可修改。</p>
+    <div id="adminCalendar"></div>
+</div>
+
+<script>
+                window.onload = function() {
+                    var calendar = new FullCalendar.Calendar(document.getElementById('adminCalendar'), {
+                        initialView: 'dayGridMonth',
+                        headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,listMonth' },
+                        events: async function(info, success) {
+                            const res = await fetch('/api/attendance/all');
+                            const data = await res.json();
+                            success(data);
+                        },
+                        // 🌟 1. 点击已有的排班条（修改）
+                        eventClick: function(info) {
+                            if(info.event.title.includes('✅')) {
+                                alert(window.currentLang === 'en' ? "Cannot modify: Employee already checked in." : "该员工已打卡，无法修改或删除。");
+                                return;
+                            }
+                            openEditShiftModal(info.event.id, info.event.startStr, info.event.title);
+                        },
+                        // 🌟 2. 点击空白方格（排班）
+                        dateClick: function(info) {
+                            openAssignModal(info.dateStr);
+                        }
+                    });
+                    calendar.render();
+                };
+</script>
+
+{% elif current_user.role == 'HR' %}
+<!-- ================= HR视图 ================= -->
+<div class="card" style="margin-bottom: 20px;">
+    <h2 data-zh="员工列表" data-en="Employee List">员工列表</h2>
+    <div class="action-bar">
+        <button class="btn btn-primary" onclick="openAddModal()" data-zh="添加员工" data-en="Add Employee">添加员工</button>
+        <button class="btn" onclick="loadEmployees()" data-zh="刷新列表" data-en="Refresh List">刷新列表</button>
+    </div>
+    <div style="overflow-x: auto;">
+        <table id="empTable" style="width: 100%;">
+            <thead>
+                <tr>
+                    <th data-zh="姓名" data-en="Name">姓名</th>
+                    <th data-zh="身份证号" data-en="ID Card">身份证号</th>
+                    <th data-zh="紧急联系人" data-en="Emergency">紧急联系人</th>
+                    <th data-zh="地址" data-en="Address">地址</th>
+                    <th data-zh="薪资" data-en="Wage">薪资</th>
+                    <th data-zh="操作" data-en="Actions">操作</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card" style="margin-bottom: 20px; width: 100%;">
+    <h2 data-zh="📅 员工排班总览" data-en="📅 Shift Overview">📅 员工排班总览</h2>
+    <p style="color: #64748b; font-size: 14px; margin-bottom: 15px;" data-zh="点击空白日期可进行排班，点击已有排班条可修改。" data-en="Click empty date to assign shift, click existing block to edit.">点击空白日期可进行排班，点击已有排班条可修改。</p>
+    <div id="hrCalendar"></div>
+</div>
+
+<!-- 添加员工弹窗 -->
+<div id="addModal" class="modal" style="display:none;">
+    <div class="modal-content">
+        <h3 data-zh="添加新员工" data-en="Add New Employee">添加新员工</h3>
+        <input type="text" id="new_username" placeholder="用户名 / Username">
+        <input type="password" id="new_password" placeholder="密码 / Password">
+        <input type="text" id="new_name" placeholder="姓名 / Name">
+        <input type="number" id="new_wage" placeholder="时薪 / Wage">
+        <div class="modal-buttons">
+            <button class="btn btn-primary" onclick="submitAddEmployee()" data-zh="确认" data-en="Confirm">确认</button>
+            <button class="btn" onclick="document.getElementById('addModal').style.display='none'" data-zh="取消" data-en="Cancel">取消</button>
+        </div>
+    </div>
+</div>
+
+<!-- 编辑员工信息弹窗 -->
+<div id="editEmpModal" class="modal" style="display:none;">
+    <div class="modal-content" style="max-height: 80vh; overflow-y: auto;">
+        <h3 data-zh="编辑员工信息" data-en="Edit Employee Info">编辑员工信息</h3>
+        <input type="hidden" id="edit_emp_id">
+
+        <div style="display:flex; gap:10px;">
+            <div style="flex:1;"><label>姓名</label><input type="text" id="edit_name" style="width:100%; padding:8px;"></div>
+        </div>
+        <div style="display:flex; gap:10px; margin-top:10px;">
+            <div style="flex:1;"><label>身份证号</label><input type="text" id="edit_id_card" style="width:100%; padding:8px;"></div>
+            <div style="flex:1;"><label>紧急联系人</label><input type="text" id="edit_emergency" style="width:100%; padding:8px;"></div>
+        </div>
+        <div style="margin-top:10px;"><label>地址</label><input type="text" id="edit_address" style="width:100%; padding:8px;"></div>
+        <div style="display:flex; gap:10px; margin-top:10px;">
+            <div style="flex:1;"><label>电话</label><input type="text" id="edit_phone" style="width:100%; padding:8px;"></div>
+            <div style="flex:1;"><label>时薪</label><input type="number" id="edit_wage" style="width:100%; padding:8px;"></div>
+        </div>
+
+        <div class="modal-buttons" style="margin-top:20px;">
+            <button class="btn btn-primary" onclick="submitEditEmp()" data-zh="保存修改" data-en="Save">保存修改</button>
+            <button class="btn" onclick="document.getElementById('editEmpModal').style.display='none'" data-zh="取消" data-en="Cancel">取消</button>
+        </div>
+    </div>
+</div>
+
+<script>
+        // 打开编辑弹窗并填入数据
+        function openEditEmpModal(emp) {
+            document.getElementById('edit_emp_id').value = emp.id;
+            document.getElementById('edit_name').value = emp.name;
+            document.getElementById('edit_id_card').value = emp.id_card_number || '';
+            document.getElementById('edit_emergency').value = emp.emergency_contact || '';
+            document.getElementById('edit_address').value = emp.address || '';
+            document.getElementById('edit_phone').value = emp.phone || '';
+            document.getElementById('edit_wage').value = emp.hourly_wage;
+
+            document.getElementById('editEmpModal').style.display = 'block';
+        }
+
+        // 提交修改
+        async function submitEditEmp() {
+            const id = document.getElementById('edit_emp_id').value;
+            const data = {
+                name: document.getElementById('edit_name').value,
+                id_card_number: document.getElementById('edit_id_card').value,
+                emergency_contact: document.getElementById('edit_emergency').value,
+                address: document.getElementById('edit_address').value,
+                phone: document.getElementById('edit_phone').value,
+                hourly_wage: document.getElementById('edit_wage').value
+            };
+
+            const res = await fetch(`/api/employees/${id}`, {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data)
+            });
+
+            if(res.ok) {
+                alert('修改成功');
+                document.getElementById('editEmpModal').style.display='none';
+                loadEmployees(); // 刷新表格
+            } else {
+                const err = await res.json();
+                alert('修改失败: ' + err.error);
+            }
+        }
+</script>
+
+<script>
+                let allEmployeesData = [];
+                let hrCalendarInstance = null;
+
+                async function loadEmployees() {
+                    const res = await fetch('/api/employees');
+                    if(res.status === 403) { alert('权限不足'); return; }
+                    allEmployeesData = await res.json();
+                    renderEmpTable(allEmployeesData);
+                }
+
+function renderEmpTable(data) {
+        const tbody = document.querySelector('#empTable tbody');
+        tbody.innerHTML = '';
+        if (data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">没有找到匹配的员工</td></tr>';
+            return;
+        }
+        const isEn = window.currentLang === 'en';
+
+        data.forEach(emp => {
+            let idCard = emp.id_card_number || '-';
+            let emergency = emp.emergency_contact || '-';
+            let address = emp.address || '-';
+            let wage = emp.hourly_wage !== undefined ? emp.hourly_wage : '-';
+
+            let btnEdit = isEn ? 'Edit' : '编辑';
+            let btnDel = isEn ? 'Delete' : '删除';
+
+            tbody.innerHTML += `<tr>
+                <td><strong>${emp.name}</strong></td>
+                <td>${idCard}</td>
+                <td>${emergency}</td>
+                <td>${address}</td>
+                <td>${wage}</td>
+                <td style="white-space: nowrap;">
+                    <!-- 🌟 新增编辑按钮 -->
+                    <button class="btn btn-primary" style="padding: 4px 8px; font-size: 12px; margin-right:5px;" onclick='openEditEmpModal(${JSON.stringify(emp)})'>${btnEdit}</button>
+                    <button class="btn btn-danger" style="padding: 4px 8px; font-size: 12px;" onclick="deleteEmp(${emp.id})">${btnDel}</button>
+                </td>
+            </tr>`;
+        });
+}
+
+                window.filterDashboard = function(keyword) {
+                    if (!keyword) { renderEmpTable(allEmployeesData); return; }
+                    const filtered = allEmployeesData.filter(emp => emp.name.includes(keyword) || emp.username.includes(keyword));
+                    renderEmpTable(filtered);
+                };
+
+                function initHRCalendar() {
+                   hrCalendarInstance = new FullCalendar.Calendar(document.getElementById('hrCalendar'), {
+                        initialView: 'dayGridMonth',
+                        // 🌟 核心修改：在 right 后面加上 ,listMonth
+                        headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,listMonth' }, 
+                        events: async function(info, success) {
+                            const res = await fetch('/api/shifts/all_global');
+                            const data = await res.json();
+                            success(data);
+                        },
+                        // 1. 点击已有排班修改
+                        eventClick: function(info) {
+                            if(info.event.title.includes('✅')) {
+                                alert(window.currentLang === 'en' ? "Cannot modify: Employee already checked in." : "该员工已打卡，无法修改。");
+                                return;
+                            }
+                            openEditShiftModal(info.event.id, info.event.startStr, info.event.title);
+                        },
+                        // 2. 点击空白日期排班
+                        dateClick: function(info) {
+                            openAssignModal(info.dateStr);
+                        }
+                    });
+                    hrCalendarInstance.render();
+                }
+
+                function openAddModal() { document.getElementById('addModal').style.display = 'block'; }
+
+                async function submitAddEmployee() {
+                    const data = {
+                        username: document.getElementById('new_username').value, password: document.getElementById('new_password').value,
+                        name: document.getElementById('new_name').value, hourly_wage: document.getElementById('new_wage').value
+                    };
+                    const res = await fetch('/api/employees', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data)
+                    });
+                    if(res.ok) { alert('添加成功'); document.getElementById('addModal').style.display='none'; loadEmployees(); }
+                    else { const err = await res.json(); alert('失败: ' + err.error); }
+                }
+
+                async function deleteEmp(id) {
+                    if(confirm('确定要删除这名员工吗？')) {
+                        const res = await fetch(`/api/employees/${id}`, { method: 'DELETE' });
+                        const data = await res.json();
+                        if(res.ok) { alert(data.message); loadEmployees(); }
+                        else { alert('删除失败: ' + data.error); }
+                    }
+                }
+
+                window.onload = function() { loadEmployees(); initHRCalendar(); };
+</script>
+
+{% else %}
+<!-- ================= 普通员工视图 ================= -->
+<div class="card" style="width: 100%;">
+    <h3 data-zh="📅 我的排班日历" data-en="📅 My Schedule">📅 我的排班日历</h3>
+    <p style="color: #64748b; font-size: 14px;" data-zh="点击自己已有的班次进行打卡，点击空白日期可申请排班。" data-en="Click your shift to check in, click empty date to request a shift.">点击自己已有的班次进行打卡，点击空白日期可申请排班。</p>
+    <div id="empCalendar"></div>
+</div>
+
+<!-- 员工自助排班弹窗 -->
+<div id="empShiftModal" class="modal" style="display:none;">
+    <div class="modal-content">
+        <h3 data-zh="申请排班" data-en="Request Shift">申请排班</h3>
+        <p style="margin-bottom:10px;">日期：<span id="emp_shift_date" style="font-weight:bold; color:#3b82f6;"></span></p>
+        <input type="hidden" id="emp_shift_date_val">
+        <label data-zh="选择班次：" data-en="Select Shift:">选择班次：</label>
+        <select id="emp_shift_type">
+            <option value="Morning">早班 (Morning)</option>
+            <option value="Afternoon">中班 (Afternoon)</option>
+            <option value="Evening">晚班 (Evening)</option>
+        </select>
+        <div class="modal-buttons" style="margin-top:20px;">
+            <button class="btn btn-primary" onclick="submitEmpShift()" data-zh="确认申请" data-en="Confirm">确认申请</button>
+            <button class="btn" onclick="document.getElementById('empShiftModal').style.display='none'" data-zh="取消" data-en="Cancel">取消</button>
+        </div>
+    </div>
+</div>
+
+<script>
+async function initEmpCalendar() {
+    var calendar = new FullCalendar.Calendar(document.getElementById('empCalendar'), {
+        initialView: 'dayGridMonth',
+        headerToolbar: { left: 'prev,next today', center: 'title', right: '' },
+        events: async function (info, success) {
+            const res = await fetch('/api/shifts/{{ current_user.id }}/all');
+            const data = await res.json();
+            const events = data.map(s => {
+                let shiftName = s.type === 'Morning' ? '早班' : (s.type === 'Afternoon' ? '中班' : '晚班');
+
+                // 🌟 核心修改：如果打过卡，标题加个勾，颜色变绿
+                let color = s.type === 'Morning' ? '#3b82f6' : (s.type === 'Afternoon' ? '#f59e0b' : '#6366f1');
+                if (s.is_attended) {
+                    shiftName = `✅ ${shiftName}`;
+                    color = '#10b981'; // 绿色
+                }
+
+                return {
+                    title: shiftName,
+                    start: s.date,
+                    color: color,
+                    extendedProps: { date: s.date, type: s.type, is_attended: s.is_attended }
+                };
+            });
+            success(events);
+        },
+        eventClick: function (info) {
+            const eventDate = info.event.startStr;
+            const eventType = info.event.extendedProps.type;
+            const isAttended = info.event.extendedProps.is_attended;
+            const today = new Date().toISOString().split('T')[0];
+
+            if (isAttended) {
+                alert('你今天已经打过卡啦！');
+                return;
+            }
+
+            if (eventDate === today) {
+                if (confirm(`确认现在进行打卡签到吗？\n班次：${info.event.title}`)) {
+                    doCheckin(eventDate, eventType);
+                }
+            } else {
+                alert('只能打卡当天的班次哦！');
+            }
+        },
+        dateClick: function (info) {
+            document.getElementById('emp_shift_date').innerText = info.dateStr;
+            document.getElementById('emp_shift_date_val').value = info.dateStr;
+            document.getElementById('empShiftModal').style.display = 'block';
+        }
+    });
+    calendar.render();
+}
+
+        async function submitEmpShift() {
+            const dateVal = document.getElementById('emp_shift_date_val').value;
+            const typeVal = document.getElementById('emp_shift_type').value;
+
+            const data = { employee_id: {{ current_user.id }}, date: dateVal, shift_type: typeVal };
+
+            const res = await fetch('/api/shifts', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data)
+            });
+            const result = await res.json();
+
+            if(res.ok) {
+                alert('申请排班成功！');
+                document.getElementById('empShiftModal').style.display='none';
+                location.reload();
+            } else {
+                alert('申请失败：' + result.error);
+            }
+        }
+
+        async function doCheckin(date, shiftType) {
+            try {
+                const res = await fetch('/api/attendance/checkin', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ date, shift_type: shiftType })
+                });
+                const result = await res.json();
+                if(res.ok) { alert('打卡成功！时间：' + result.time); location.reload(); }
+                else { alert('打卡失败：' + result.error); }
+            } catch(e) { alert('网络异常'); }
+        }
+
+        window.onload = initEmpCalendar;
+</script>
+{% endif %}
+
+<!-- ======================================================= -->
+<!-- 🌟 全局弹窗区：修改排班、点击日期选人排班 -->
+<!-- ======================================================= -->
+<div id="editShiftModal" class="modal" style="display:none;">
+    <div class="modal-content">
+        <h3 data-zh="修改/删除排班" data-en="Edit / Delete Shift">修改/删除排班</h3>
+        <p style="margin-bottom:10px; font-weight:bold; color:#3b82f6;" id="edit_title"></p>
+        <input type="hidden" id="edit_shift_id">
+        <label data-zh="更改日期：" data-en="Change Date:">更改日期：</label>
+        <input type="date" id="edit_shift_date">
+        <div class="modal-buttons" style="margin-top:20px;">
+            <button class="btn btn-primary" onclick="saveEditShift()" data-zh="保存修改" data-en="Save">保存修改</button>
+            <button class="btn btn-danger" onclick="deleteEditShift()" data-zh="删除此排班" data-en="Delete">删除此排班</button>
+            <button class="btn" onclick="document.getElementById('editShiftModal').style.display='none'" data-zh="取消" data-en="Cancel">取消</button>
+        </div>
+    </div>
+</div>
+
+<div id="assignModal" class="modal" style="display:none;">
+    <div class="modal-content">
+        <h3 data-zh="新增排班" data-en="Assign Shift">新增排班</h3>
+        <p style="margin-bottom:10px;">日期：<span id="assign_date_text" style="font-weight:bold; color:#3b82f6;"></span></p>
+        <input type="hidden" id="assign_date_val">
+
+        <label data-zh="选择员工：" data-en="Select Employee:">选择员工：</label>
+        <select id="assign_emp_id" style="margin-bottom:10px;"></select>
+
+        <label data-zh="选择班次：" data-en="Select Shift:">选择班次：</label>
+        <select id="assign_shift_type">
+            <option value="Morning">早班 (Morning)</option>
+            <option value="Afternoon">中班 (Afternoon)</option>
+            <option value="Evening">晚班 (Evening)</option>
+        </select>
+
+        <div class="modal-buttons" style="margin-top:20px;">
+            <button class="btn btn-primary" onclick="submitAssignShift()" data-zh="确认排班" data-en="Confirm">确认排班</button>
+            <button class="btn" onclick="document.getElementById('assignModal').style.display='none'" data-zh="取消" data-en="Cancel">取消</button>
+        </div>
+    </div>
+</div>
+
+<script>
+            // ==== 全局修改排班相关 ====
+            function openEditShiftModal(shiftId, date, title) {
+                document.getElementById('edit_shift_id').value = shiftId;
+                document.getElementById('edit_shift_date').value = date;
+                document.getElementById('edit_title').innerText = title;
+                document.getElementById('editShiftModal').style.display = 'block';
+            }
+
+            async function saveEditShift() {
+                const id = document.getElementById('edit_shift_id').value;
+                const newDate = document.getElementById('edit_shift_date').value;
+                const res = await fetch(`/api/shifts/${id}`, {
+                    method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({date: newDate})
+                });
+                if(res.ok) { alert('修改成功'); location.reload(); }
+                else { const err = await res.json(); alert('修改失败: ' + err.error); }
+            }
+
+            async function deleteEditShift() {
+                if(!confirm('确定要彻底删除该条排班吗？')) return;
+                const id = document.getElementById('edit_shift_id').value;
+                const res = await fetch(`/api/shifts/${id}`, { method: 'DELETE' });
+                if(res.ok) { alert('删除成功'); location.reload(); }
+            }
+
+            // ==== 全局点击日历排班相关 ====
+            async function openAssignModal(dateStr) {
+                document.getElementById('assign_date_text').innerText = dateStr;
+                document.getElementById('assign_date_val').value = dateStr;
+
+                // 拉取所有员工填充下拉框
+                const select = document.getElementById('assign_emp_id');
+                select.innerHTML = '<option value="">加载中...</option>';
+                document.getElementById('assignModal').style.display = 'block';
+
+                const res = await fetch('/api/employees/list');
+                const data = await res.json();
+
+                if(data.length === 0) {
+                    select.innerHTML = '<option value="">暂无普通员工</option>';
+                } else {
+                    select.innerHTML = data.map(emp => `<option value="${emp.id}">${emp.name}</option>`).join('');
+                }
+            }
+
+            async function submitAssignShift() {
+                const empId = document.getElementById('assign_emp_id').value;
+                const dateVal = document.getElementById('assign_date_val').value;
+                const typeVal = document.getElementById('assign_shift_type').value;
+
+                if (!empId) { alert('请选择员工'); return; }
+
+                const res = await fetch('/api/shifts', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ employee_id: empId, date: dateVal, shift_type: typeVal })
+                });
+
+                if(res.ok) {
+                    alert('排班成功');
+                    document.getElementById('assignModal').style.display='none';
+                    location.reload();
+                } else {
+                    const err = await res.json();
+                    alert('排班失败: ' + err.error);
+                }
+            }
+</script>
+
+{% endblock %}
