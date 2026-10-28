@@ -1,0 +1,164 @@
+<!DOCTYPE html><html lang="zh-CN"><head>
+    <meta charset="UTF-8">
+    <title>Meiti Shangcheng System</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script></head><body>
+    {% if request.path == '/login' %}
+    <!-- 登录页 -->
+    <div style="position: absolute; top: 20px; right: 20px; z-index: 100;">
+        <button onclick="localStorage.setItem('siteLang', localStorage.getItem('siteLang') === 'zh' ? 'en' : 'zh'); location.reload();" class="icon-btn" style="background: white; border: 1px solid #ccc; padding: 5px 10px; border-radius: 4px; cursor: pointer;">EN / 中</button>
+    </div>
+    <div style="display: flex; justify-content: center; align-items: center; min-height: 100vh; background-color: var(--bg-color);">
+        {% block login_content %}{% endblock %}
+    </div>
+    {% else %}
+    <!-- 系统主体 -->
+    <div class="app-container">
+        <aside class="sidebar">
+            <div class="logo-area">
+                <div class="logo-icon">M</div>
+                <span class="logo-text">Meiti System</span>
+            </div>
+
+            <nav class="side-nav">
+                <a href=" " class="nav-item active" id="nav-dashboard" onclick="switchView('dashboard')">
+                    <span data-zh="工作台" data-en="Dashboard">工作台</span>
+                </a>
+
+                {% if current_user.role == 'Floor Manager' %}
+                <a href=" " class="nav-item" onclick="showApproval(event); return false;">
+                    <span data-zh=" data-en="</span>
+                </a>
+                {% endif %}
+            </nav>
+
+            <div class="sidebar-bottom">
+                {% if current_user.is_authenticated %}
+                <div class="user-info" onclick="openProfileModal()" style="cursor: pointer; padding: 8px; border-radius: 8px;">
+                    <div class="avatar">{{ current_user.name[0] }}</div>
+                    <div class="user-details">
+                        <div class="user-name">{{ current_user.name }}</div>
+                        <div class="user-role">{{ current_user.role }}</div>
+                    </div>
+                </div>
+                <button onclick="window.location.href='{{ url_for('logout') }}'" class="logout-btn" style="width: 100%; border: none; cursor: pointer;" data-zh="退出登录" data-en="Logout">退出登录</button>
+                {% endif %}
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <header class="topbar">
+                {% if current_user.role == 'HR' %}
+                <div class="search-bar">
+                    <input type="text" id="globalSearch" data-zh-placeholder="搜索员工姓名..." data-en-placeholder="Search name..." placeholder="搜索员工姓名..." oninput="handleGlobalSearch()">
+                </div>
+                {% else %}
+                <div></div>
+                {% endif %}
+                <button onclick="localStorage.setItem('siteLang', localStorage.getItem('siteLang') === 'zh' ? 'en' : 'zh'); location.reload();" class="icon-btn">EN / 中</button>
+            </header>
+
+            <div class="content-wrapper">
+                {% block app_content %}{% endblock %}
+            </div>
+        </main>
+    </div>
+
+    <!-- 个人中心弹窗 -->
+    <!-- ================= 个人中心弹窗 ================= -->
+    <div id="globalProfileModal" class="modal" style="display:none;">
+        <div class="modal-content">
+            <h3 data-zh=" data-en="</h3>
+
+            <div style="margin-top:15px;">
+                <label data-zh="姓名" data-en="Name">姓名</label>
+                <input type="text" id="g_profile_name" value="{{ current_user.name }}" style="width:100%; padding:8px; margin-top:5px;">
+            </div>
+
+            <div style="margin-top:10px;">
+                <label data-zh="邮箱" data-en="Email">邮箱</label>
+                <input type="email" id="g_profile_email" value="{{ current_user.email or '' }}" style="width:100%; padding:8px; margin-top:5px;">
+            </div>
+
+            <div style="margin-top:10px;">
+                <label data-zh="电话" data-en="Phone">电话</label>
+                <input type="text" id="g_profile_phone" value="{{ current_user.phone or '' }}" style="width:100%; padding:8px; margin-top:5px;">
+            </div>
+
+            <div style="margin-top:10px;">
+                <label data-zh="地址" data-en="Address">地址</label>
+                <input type="text" id="g_profile_address" value="{{ current_user.address or '' }}" style="width:100%; padding:8px; margin-top:5px;">
+            </div>
+
+            <!-- 
+            <div style="display:flex; gap:10px; margin-top:10px;">
+                <div style="flex:1;">
+                    <label data-zh="身份证号 (只读)" data-en="ID Card (Read-only)">身份证号 (只读)</label>
+                    <input type="text" id="g_profile_id_card" value="{{ current_user.id_card_number or '' }}" readonly style="width:100%; padding:8px; margin-top:5px; background-color: #f1f5f9; color: #94a3b8; cursor: not-allowed;">
+                </div>
+                <div style="flex:1;">
+                    <label data-zh="薪资 (只读)" data-en="Salary (Read-only)">薪资 (只读)</label>
+                    <input type="text" id="g_profile_wage" value="{{ current_user.hourly_wage }}" readonly style="width:100%; padding:8px; margin-top:5px; background-color: #f1f5f9; color: #94a3b8; cursor: not-allowed;">
+                </div>
+            </div>
+
+            <div class="modal-buttons" style="margin-top:20px;">
+                <button class="btn btn-primary" onclick="submitGlobalProfile()" data-zh="保存" data-en="Save">保存</button>
+                <button class="btn" onclick="document.getElementById('globalProfileModal').style.display='none'" data-zh="关闭" data-en="Close">关闭</button>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <div id="toastMessage" style="display: none; position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #10b981; color: white; padding: 12px 24px; border-radius: 8px; z-index: 9999;"></div>
+
+    <script>
+                        function showToast(msg, isErr = false) {
+                            const t = document.getElementById('toastMessage');
+                            t.innerText = msg; t.style.background = isErr ? '#ef4444' : '#10b981'; t.style.display = 'block';
+                            setTimeout(() => t.style.display = 'none', 2000);
+                        }
+
+                        window.currentLang = localStorage.getItem('siteLang') || 'zh';
+                        window.applyLanguage = function() {
+                            if (window.currentLang === 'en') {
+                                document.querySelectorAll('[data-zh]').forEach(el => el.innerText = el.getAttribute('data-en'));
+                                document.querySelectorAll('[data-zh-placeholder]').forEach(el => el.setAttribute('placeholder', el.getAttribute('data-en-placeholder')));
+                                const dict = {"员工列表":"Employee List","添加员工":"Add Employee","刷新列表":"Refresh List","姓名":"Name","身份证号":"ID Card","紧急联系人":"Emergency","地址":"Address","薪资":"Wage","操作":"Actions","编辑":"Edit","删除":"Delete","查看":"View","当天排班详情":"Shift Details","日期：":"Date: ","员工":"Employee","日期":"Date","班次":"Shift","正常":"Normal","迟到":"Late","早退":"Early","缺勤":"Absent","请假":"Leave"};
+                                const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
+                                let n; while (n = walker.nextNode()) { let txt = n.nodeValue.trim(); if (dict[txt]) n.nodeValue = n.nodeValue.replace(txt, dict[txt]); }
+                            }
+                        };
+                        window.addEventListener('DOMContentLoaded', window.applyLanguage);
+
+                        let searchTimeout = null;
+                        function handleGlobalSearch() {
+                            clearTimeout(searchTimeout);
+                            searchTimeout = setTimeout(() => {
+                                const kw = document.getElementById('globalSearch').value.trim();
+                                if (typeof window.filterDashboard === 'function') window.filterDashboard(kw);
+                            }, 500);
+                        }
+
+                        function openProfileModal() { document.getElementById('globalProfileModal').style.display = 'flex'; }
+
+                        async function submitGlobalProfile() {
+                            const data = {
+                                name: document.getElementById('g_profile_name').value,
+                                email: document.getElementById('g_profile_email').value,
+                                phone: document.getElementById('g_profile_phone').value,
+                                address: document.getElementById('g_profile_address').value
+                                // 
+                            };
+                            const res = await fetch('/api/employee/profile', {
+                                method: 'PUT',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(data)
+                            });
+                            if (res.ok) { showToast('Updated'); location.reload(); }
+                            else { showToast('Failed', true); }
+                        }
+    </script></body></html>
